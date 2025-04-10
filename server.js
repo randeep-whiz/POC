@@ -1,0 +1,28 @@
+require('dotenv').config()
+const express = require('express')
+const app = express()
+const path = require('path')
+const { logger } = require('./middleware/logger')
+const errorHandler = require('./middleware/errorHandler')
+const cookieParser = require('cookie-parser')
+const cors = require('cors')
+const corsOptions= require('./config/corsOptions')
+const PORT = process.env.PORT || 8080
+const connectDBSQL = require('./config/dbMySQL')
+
+console.log(process.env.NODE_ENV)
+connectDBSQL()
+app.use(logger)
+app.use(cors(corsOptions))
+app.use(express.json())
+app.use(cookieParser())
+
+app.use('/users', require('./routes/userRoutes'))
+app.use('/auth', require('./routes/authRoutes'))
+app.use('/token', require('./routes/tokenRoutes'))
+app.use('/ai', require('./routes/aiRoutes'))
+app.use('/api', require('./routes/geminiRoutes'))
+app.use('/betworx', require('./routes/betWorxRoutes'))
+
+app.use(errorHandler)
+app.listen(PORT, () => console.log(`Server running on port ${PORT} `))
