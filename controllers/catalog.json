@@ -22,6 +22,18 @@
       "category": "Casual",
       "tags": ["white", "canvas", "shoe"],
       "inventory": 3
+    },
+    {
+        "name": "Example Product 1",
+        "brand": "Brand A",
+        "category": "Category 1",
+        "tags": ["tag1", "tag2"]
+    },
+    {
+        "name": "Example Product 2",
+        "brand": "Brand B",
+        "category": "Category 2",
+        "tags": ["tag3", "tag4"]
     }
-  ]
+]
   

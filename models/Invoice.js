@@ -1,26 +1,22 @@
 const { Sequelize, DataTypes, Model } = require('sequelize');
 const sequelize = new Sequelize('sqlite::memory:');
 
-module.exports = (sequelize, Sequelize) => {
-    const Invoice = sequelize.define("Invoice", {
-          id: {
-            type: Sequelize.INTEGER,
-            autoIncrement: true,
-            primaryKey: true
-          },
-          invoice_number: {
-            type: Sequelize.STRING,
-            allowNull: true
-          },
-          amount: {
-            type: Sequelize.FLOAT,
-            allowNull: true
-          },
-          vendor: {
-            type: Sequelize.STRING,
+module.exports = (sequelize, DataTypes) => {
+    const Invoice = sequelize.define('Invoice', {
+        invoice_number: {
+            type: DataTypes.STRING,
             allowNull: false,
             unique: true
-          },
+        },
+        amount: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: false
+        },
+        vendor: {
+            type: DataTypes.STRING,
+            allowNull: false
+        },
+        // Add any other fields you need
     },{
       sequelize,
       paranoid: true,

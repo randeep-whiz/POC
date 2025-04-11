@@ -119,48 +119,168 @@ async function generateContent(prompt) {
     }
     
 }
-async function analyzeImage(filePath) {
+
+// Define default prompts object
+const DEFAULT_PROMPTS = {
+    xray: "You are a medical imaging specialist. Analyze this X-ray image and provide a detailed medical report. Include: 1. Findings 2. Impression 3. Recommendations.",
+    goods: "You are a quality control AI for a manufacturing plant.\nInspect the uploaded image and look for:\n- Surface scratches\n- Component misalignment\n- Incorrect or missing labels\n- Packaging damage\nReturn a clear PASS or FAIL decision, list defects, and recommend an action.",
+    search: "Identify the product shown in the image. Return its name, type, and visible brand.",
+    invoice: `Analyze this invoice document and extract the following information:
+- Invoice Number
+- Total Amount
+- Vendor/Company Name
+- Invoice Date
+- Line Items (if present)
+- Payment Terms (if present)
+- Tax Details (if present)
+
+Format the response in a clear, structured manner.`
+};
+
+// Modified processImageWithGemini to handle custom prompts
+async function processImageWithGemini(filePath, operationType, options = {}) {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  
     const imageBuffer = fs.readFileSync(filePath);
     const base64Image = imageBuffer.toString("base64");
-  
-    const prompt = `You are a quality control AI for a manufacturing plant.\nInspect the uploaded image and look for:\n- Surface scratches\n- Component misalignment\n- Incorrect or missing labels\n- Packaging damage\nReturn a clear PASS or FAIL decision, list defects, and recommend an action.`;
-  
+
+    // Use custom prompt if provided, otherwise use default
+    const prompt = options.customPrompt || DEFAULT_PROMPTS[operationType];
+    const mimeType = options.mimeType || "image/jpeg";
+
     const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          mimeType: "image/jpeg",
-          data: base64Image,
-        },
-      },
+        prompt,
+        {
+            inlineData: {
+                mimeType: mimeType,
+                data: base64Image,
+            },
+        }
     ]);
-  
+
     const response = await result.response;
     return response.text();
 }
-async function describeProductImage(filePath) {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const imageBuffer = fs.readFileSync(filePath);
-  const base64Image = imageBuffer.toString("base64");
 
-  const prompt = `Identify the product shown in the image. Return its name, type, and visible brand.`;
+// Simplified processDocument function with custom prompt support
+async function processDocument(file, operationType, options = {}) {
+    try {
+        switch (operationType) {
+            case 'invoice':
+                if (!options.filePath) {
+                    throw new Error("File path is required for invoice processing");
+                }
+                return await processInvoiceDocument(options.filePath, {
+                    prompt: options.prompt || DEFAULT_PROMPTS.invoice
+                });
+            case 'xray':
+            case 'goods':
+            case 'search': {
+                if (!file || !file.path) {
+                    throw new Error("File is required for image processing");
+                }
+                const analysis = await processImageWithGemini(
+                    file.path,
+                    operationType,
+                    {
+                        customPrompt: options.prompt,
+                        mimeType: file.mimetype
+                    }
+                );
+                
+                const response = {
+                    type: operationType,
+                    analysis,
+                    prompt: options.prompt || DEFAULT_PROMPTS[operationType]
+                };
 
-  const result = await model.generateContent([
-    prompt,
-    {
-      inlineData: {
-        mimeType: "image/jpeg",
-        data: base64Image,
-      },
-    },
-  ]);
+                if (operationType === 'xray') {
+                    response.report = generateReport(analysis);
+                    response.meta = {
+                        name: file.originalname,
+                        mime: file.mimetype,
+                        size: file.size
+                    };
+                }
 
-  const response = await result.response;
-  return response.text();
+                return response;
+            }
+            default:
+                throw new Error('Invalid operation type');
+        }
+    } catch (error) {
+        console.error(`Error processing ${operationType}:`, error);
+        throw error;
+    }
 }
+
+async function processInvoiceDocument(filePath, options = {}) {
+    let extractedText = null;
+    
+    // Get text from document
+    if (filePath.toLowerCase().endsWith('.pdf')) {
+        extractedText = await extractTextFromPdf(filePath);
+    } else {
+        const processedFilePath = await preprocessImage(filePath);
+        extractedText = await processOCR(processedFilePath);
+    }
+
+    if (!extractedText) {
+        throw new Error("Text extraction failed");
+    }
+
+    // If custom prompt is provided, use Gemini for analysis
+    if (options.prompt) {
+        const analysis = await generateContent([
+            options.prompt,
+            extractedText
+        ].join('\n\n'));
+
+        return {
+            type: 'invoice',
+            rawText: extractedText,
+            aiAnalysis: analysis,
+            data: extractInvoiceData(extractedText), // still use regex for structured data
+            validation: validateInvoiceData(extractInvoiceData(extractedText))
+        };
+    }
+
+    // Default behavior using regex
+    const invoiceData = extractInvoiceData(extractedText);
+    const validationResults = validateInvoiceData(invoiceData);
+
+    return {
+        type: 'invoice',
+        data: invoiceData,
+        validation: validationResults
+    };
+}
+
+// Add this function definition
+async function analyzeImage(filePath) {
+    return await processImageWithGemini(
+        filePath,
+        'goods',
+        {
+            customPrompt: DEFAULT_PROMPTS.goods,
+            mimeType: 'image/jpeg'
+        }
+    );
+}
+
+// Add this function definition if it's missing too
+async function describeProductImage(filePath) {
+    return await processImageWithGemini(
+        filePath,
+        'search',
+        {
+            customPrompt: DEFAULT_PROMPTS.search,
+            mimeType: 'image/jpeg'
+        }
+    );
+}
+
 module.exports = {
+    processDocument,
     preprocessImage,
     extractTextFromPdf,
     processOCR,
@@ -169,5 +289,6 @@ module.exports = {
     generateReport,
     generateContent,
     analyzeImage,
-    describeProductImage
-}
+    describeProductImage,
+    DEFAULT_PROMPTS
+};
