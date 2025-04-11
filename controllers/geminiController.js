@@ -72,8 +72,7 @@ exports.processDocument = async (req, res) => {
             });
         }
 
-        console.log('Processing search with file:', req.file?.originalname);
-        console.log('Catalog size:', catalog.length);
+        console.log('Processing with file:', req.file?.originalname);
         console.log('Operation type:', operationType);
 
         // For search operations, handle the description differently
@@ -86,7 +85,7 @@ exports.processDocument = async (req, res) => {
             // Perform the search with the description
             const searchResponse = {
                 type: 'search',
-                description: description.analysis, // Use the analysis as description
+                description: description.analysis,
                 matches: fuse.search(description.analysis)
             };
 
@@ -97,7 +96,7 @@ exports.processDocument = async (req, res) => {
                 promptUsed: customPrompt || DEFAULT_PROMPTS[operationType]
             };
         } else {
-            // Handle other operation types as before
+            // Handle other operation types
             const result = await processDocument(req.file, operationType, {
                 filePath: req.file.path,
                 prompt: customPrompt
@@ -210,124 +209,3 @@ function handleSearchResult(result) {
         throw error;
     }
 }
-
-exports.Xray = async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-
-    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/jpg'];
-    if (!allowedMimeTypes.includes(req.file.mimetype)) {
-      return res.status(400).json({ message: 'Invalid file type', type: req.file.mimetype });
-    }
-
-    const maxFileSize = 5 * 1024 * 1024; // 5MB
-    if (req.file.size > maxFileSize) {
-      return res.status(400).json({ message: 'File too large', size: req.file.size });
-    }
-
-    const imagePath = path.join(__dirname, '../', req.file.path);
-    if (!fs.existsSync(imagePath)) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-
-    const imageBuffer = fs.readFileSync(imagePath);
-    const base64Image = imageBuffer.toString('base64');
-
-    const requestBody = {
-      contents: [
-        {
-          parts: [
-            {
-              text: "You are a medical imaging specialist. Analyze this X-ray image and provide a detailed medical report. Include: 1. Findings 2. Impression 3. Recommendations."
-            },
-            {
-              inlineData: {
-                mimeType: req.file.mimetype,
-                data: base64Image
-              }
-            }
-          ]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        topK: 32,
-        topP: 1,
-        maxOutputTokens: 2048
-      }
-    };
-
-    const response = await axios.post(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, requestBody, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    fs.unlinkSync(imagePath); // cleanup uploaded image
-
-    if (!aiText) {
-      return res.status(500).json({ message: 'No response from AI' });
-    }
-
-    res.status(200).json({
-      message: 'X-ray analysis complete',
-      report: generateReport(aiText),
-      analysis: aiText,
-      meta: {
-        name: req.file.originalname,
-        mime: req.file.mimetype,
-        size: req.file.size,
-        processedAt: new Date().toISOString()
-      }
-    });
-  } catch (err) {
-    console.error('Error:', err);
-    if (req.file && req.file.path) {
-      try { fs.unlinkSync(path.join(__dirname, "../", req.file.path)); } catch (e) {}
-    }
-
-    res.status(500).json({
-      message: 'Failed to analyze image',
-      error: err.message,
-      details: err.response?.data || {}
-    });
-  }
-};
-
-exports.Goods = async (req, res) => {
-    try {
-        // Use the unified processDocument function instead
-        const result = await processDocument(req.file, 'goods', {
-            prompt: req.body.prompt // optional custom prompt
-        });
-        
-        fs.unlinkSync(req.file.path); // Clean up
-        res.json({ result: result.analysis });
-    } catch (error) {
-        console.error("Inspection error:", error);
-        if (req.file && req.file.path) {
-            try { fs.unlinkSync(req.file.path); } catch (e) {}
-        }
-        res.status(500).json({ error: "Image inspection failed" });
-    }
-};
-
-exports.Search = async (req, res) => {
-    try {
-        const imagePath = req.file.path;
-        const description = await describeProductImage(imagePath);
-        fs.unlinkSync(imagePath);
-
-        const matches = fuse.search(description);
-        const topMatch = matches[0]?.item || null;
-
-        res.json({
-            query: description,
-            match: topMatch,
-            alternatives: matches.slice(1, 3).map(m => m.item)
-        });
-    } catch (error) {
-        console.error("Error in search:", error);
-        res.status(500).json({ error: "Failed to process image" });
-    }
-};
