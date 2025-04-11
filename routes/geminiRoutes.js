@@ -18,9 +18,6 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // Define the route
-router.post('/invoice-doc', upload.single('document'), geminiController.invoiceDoc);
-router.post('/xray', upload.single('xray-image'), geminiController.Xray);
-router.post('/goods', upload.single('goods-image'), geminiController.Goods);
-router.post('/search', upload.single('image'), geminiController.Search);
+router.post('/process-document', upload.single('file'), geminiController.processDocument);
 
 module.exports = router;
