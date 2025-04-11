@@ -35,18 +35,42 @@ const fuse = new Fuse(catalog, {
 
 exports.processDocument = async (req, res) => {
     try {
-        const operationType = req.body.operationType;
+        // Add debug logging
+        console.log('Request body:', req.body);
+        console.log('Files:', req.file);
+        
+        let operationType = req.body.operationType;
         const customPrompt = req.body.prompt;
 
-        if (!['invoice', 'xray', 'goods', 'search'].includes(operationType)) {
+        // Add type coercion and trimming
+        if (typeof operationType === 'string') {
+            operationType = operationType.trim().toLowerCase();
+        }
+
+        // More detailed validation
+        const validOperationTypes = ['invoice', 'xray', 'goods', 'search'];
+        if (!operationType) {
             return res.status(400).json({
-                message: "Invalid operation type"
+                message: "Operation type is required",
+                received: operationType,
+                validTypes: validOperationTypes
+            });
+        }
+
+        if (!validOperationTypes.includes(operationType)) {
+            return res.status(400).json({
+                message: "Invalid operation type",
+                received: operationType,
+                validTypes: validOperationTypes
             });
         }
 
         // File validation for all types
         if (!req.file) {
-            return res.status(400).json({ message: 'No file uploaded' });
+            return res.status(400).json({ 
+                message: 'No file uploaded',
+                operationType: operationType
+            });
         }
 
         // Validate file size and type
@@ -61,20 +85,23 @@ exports.processDocument = async (req, res) => {
         if (!allowedMimeTypes.includes(req.file.mimetype)) {
             return res.status(400).json({ 
                 message: 'Invalid file type', 
-                type: req.file.mimetype 
+                type: req.file.mimetype,
+                allowedTypes: allowedMimeTypes
             });
         }
 
         if (req.file.size > maxFileSize) {
             return res.status(400).json({ 
                 message: 'File too large', 
-                size: req.file.size 
+                size: req.file.size,
+                maxSize: maxFileSize
             });
         }
 
         console.log('Processing with file:', req.file?.originalname);
         console.log('Operation type:', operationType);
 
+        let response;
         // For search operations, handle the description differently
         if (operationType === 'search') {
             const description = await processDocument(req.file, operationType, {
@@ -129,7 +156,7 @@ exports.processDocument = async (req, res) => {
         res.status(500).json({
             message: "Error processing document",
             error: error.message,
-            catalogSize: catalog.length,
+            requestBody: req.body,
             fileInfo: req.file ? {
                 name: req.file.originalname,
                 type: req.file.mimetype,
